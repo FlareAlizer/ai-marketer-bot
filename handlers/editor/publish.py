@@ -49,6 +49,8 @@ async def process_publish_now(
     post = await require_post(call, session, callback_data.post_id)
     if post is None:
         return
+    # Блокируем строку: в эту же секунду пост может отправлять планировщик
+    await session.refresh(post, with_for_update=True)
     if post.status == PostStatus.PUBLISHED:
         # Защита от повторной отправки в канал по второму нажатию
         await call.answer("Этот пост уже опубликован.", show_alert=True)

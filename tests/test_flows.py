@@ -282,7 +282,7 @@ async def test_card_opens_from_photo_preview(chat: Chat, session_factory: Factor
     await chat.click(EditorCallback(action="preview", post_id=post_id))
     assert telegram.sent(SendPhoto)[-1].caption == "Текст"
 
-    # У сообщения с фото нет текста: карточка приходит новым сообщением, а не правкой
+    # У сообщения с фото нет текста, править его нельзя: карточка приходит новым сообщением
     await chat.click(EditorCallback(action="back_to_main", post_id=post_id), message_text=None)
     assert "🛠 <b>Редактор поста #1</b>" in telegram.sent(SendMessage)[-1].text
 
@@ -398,3 +398,17 @@ async def test_stale_button_gets_an_answer(chat: Chat, telegram) -> None:
     await chat.click("editor:menu_topic")  # формат кнопок старой версии, без ID поста
     await chat.click(SetupCallback(action="quantity", value="5"))  # шаг уже не активен
     assert alerts(telegram) == ["Кнопка устарела. Откройте раздел заново через меню."] * 2
+
+
+async def test_unexpected_error_is_reported_to_user(chat: Chat, session_factory: Factory, telegram, llm) -> None:
+    (post_id,) = await seed(session_factory, posts=1)
+
+    async def broken(**kwargs: object) -> str:
+        raise RuntimeError("неожиданный сбой")
+
+    llm.generate_post_text = broken
+    await chat.click(PostSelectCallback(post_id=post_id, action="edit"))
+
+    assert telegram.texts()[-1] == "⚠️ Что-то пошло не так. Попробуйте ещё раз или нажмите /start."
+    assert (await get_post(session_factory, post_id)).text is None
+    telegram.requests.clear()  # ошибка здесь ожидаемая, проверку в фикстуре пропускаем
