@@ -1,17 +1,22 @@
-from typing import Callable, Awaitable, Dict, Any
+from collections.abc import Awaitable, Callable
+from typing import Any
+
 from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject
-from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
 
 class DbSessionMiddleware(BaseMiddleware):
-    def __init__(self, session_factory: async_sessionmaker):
+    """Открывает сессию БД на время обработки апдейта и передаёт её в хендлер как session."""
+
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self.session_factory = session_factory
 
     async def __call__(
         self,
-        handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
+        handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
         event: TelegramObject,
-        data: Dict[str, Any]
+        data: dict[str, Any],
     ) -> Any:
         async with self.session_factory() as session:
             data["session"] = session

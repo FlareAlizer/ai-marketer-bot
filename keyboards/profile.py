@@ -1,64 +1,72 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.utils.keyboard import InlineKeyboardBuilder
+"""Клавиатуры анкеты, профиля и истории планов."""
+
+from collections.abc import Iterable
+
 from aiogram.filters.callback_data import CallbackData
+from aiogram.types import InlineKeyboardMarkup
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+
 from db.models import ContentPlan
+
+# Код цели в callback -> (текст кнопки, значение, которое сохраняется в профиль и уходит в промпт)
+GOALS: dict[str, tuple[str, str]] = {
+    "sales": ("💰 Продажи", "Продажи"),
+    "engagement": ("🔥 Прогрев / Вовлечение", "Вовлечение"),
+    "expert": ("🎓 Экспертность / Доверие", "Экспертность"),
+    "brand": ("🚀 Личный бренд", "Личный бренд"),
+}
+DEFAULT_GOAL = "Продажи"
+OWN_GOAL_VALUE = "own_input"
+
+QUANTITIES: list[tuple[str, int]] = [
+    ("5 постов", 5),
+    ("7 постов (Неделя)", 7),
+    ("10 постов", 10),
+    ("14 постов (2 недели)", 14),
+    ("30 постов (Месяц)", 30),
+]
+ALLOWED_QUANTITIES = frozenset(quantity for _, quantity in QUANTITIES)
+
 
 class SetupCallback(CallbackData, prefix="setup"):
     action: str
     value: str
 
+
 class PlanHistoryCallback(CallbackData, prefix="history"):
     plan_id: int
     action: str
 
-class EditProfileCallback(CallbackData, prefix="edit_prof"):
-    field: str 
 
-# --- ЦЕЛИ ---
+class EditProfileCallback(CallbackData, prefix="edit_prof"):
+    field: str
+
+
+def goal_title(code: str) -> str:
+    """Название цели по коду из кнопки. Неизвестный код — цель по умолчанию."""
+    return GOALS[code][1] if code in GOALS else DEFAULT_GOAL
+
+
 def get_goals_keyboard(is_new_plan: bool = False) -> InlineKeyboardMarkup:
-    """
-    is_new_plan=True -> action="goal_new"
-    is_new_plan=False -> action="goal"
-    """
+    """Выбор цели. Для нового плана action="goal_new" и есть кнопка «Своя тема», в анкете — action="goal"."""
     builder = InlineKeyboardBuilder()
-    
-    # Стандартные цели
-    goals = [
-        ("💰 Продажи", "sales"),
-        ("🔥 Прогрев / Вовлечение", "engagement"),
-        ("🎓 Экспертность / Доверие", "expert"),
-        ("🚀 Личный бренд", "brand")
-    ]
-    
     action_key = "goal_new" if is_new_plan else "goal"
-    
-    for text, val in goals:
-        builder.button(text=text, callback_data=SetupCallback(action=action_key, value=val))
-    
-    # --- НОВАЯ КНОПКА: Своя тема ---
-    # Добавляем её только при создании НОВОГО плана, чтобы не усложнять регистрацию (или можно везде)
+    for code, (text, _) in GOALS.items():
+        builder.button(text=text, callback_data=SetupCallback(action=action_key, value=code))
     if is_new_plan:
-        builder.button(text="✍️ Своя тема/цель", callback_data=SetupCallback(action=action_key, value="own_input"))
-    
+        builder.button(text="✍️ Своя тема/цель", callback_data=SetupCallback(action=action_key, value=OWN_GOAL_VALUE))
     builder.adjust(1)
     return builder.as_markup()
 
-# --- КОЛИЧЕСТВО ---
+
 def get_quantity_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    quantities = [
-        ("5 постов", "5"),
-        ("7 постов (Неделя)", "7"),
-        ("10 постов", "10"),
-        ("14 постов (2 недели)", "14"),
-        ("30 постов (Месяц)", "30")
-    ]
-    for text, val in quantities:
-        builder.button(text=text, callback_data=SetupCallback(action="quantity", value=val))
+    for text, quantity in QUANTITIES:
+        builder.button(text=text, callback_data=SetupCallback(action="quantity", value=str(quantity)))
     builder.adjust(1)
     return builder.as_markup()
 
-# --- ПРОФИЛЬ ---
+
 def get_profile_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="🎯 Ниша", callback_data=EditProfileCallback(field="niche"))
@@ -69,14 +77,14 @@ def get_profile_keyboard() -> InlineKeyboardMarkup:
     builder.adjust(2, 2, 1)
     return builder.as_markup()
 
-# --- ИСТОРИЯ ---
-def get_history_list_keyboard(plans: list[ContentPlan]) -> InlineKeyboardMarkup:
+
+def get_history_list_keyboard(plans: Iterable[ContentPlan]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for plan in plans:
         date_str = plan.created_at.strftime("%d.%m.%Y")
         builder.button(
-            text=f"📅 План от {date_str}", 
-            callback_data=PlanHistoryCallback(plan_id=plan.id, action="open")
+            text=f"📅 План от {date_str}",
+            callback_data=PlanHistoryCallback(plan_id=plan.id, action="open"),
         )
     builder.button(text="🔙 Назад", callback_data="back_to_profile")
     builder.adjust(1)
